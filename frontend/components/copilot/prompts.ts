@@ -1,0 +1,29 @@
+import type { PortSnapshot } from "@/lib/contracts/domain";
+
+export const PROMPTS=[
+  "What is happening at Berth 2?","Why is Berth 2 behind schedule?","Which vessel will be late?","Who is in a crane exclusion zone?",
+  "Show last night's safety incidents","What should we change to recover the delay?","What if Orient Gale arrives 20 minutes late?","Summarise this shift",
+  "Is Crane 3's certificate valid?","How much energy have electric prime movers used today?","Prepare this week's audit report","Compare all five ports"
+] as const;
+export type CopilotAnswer={text:string;evidence:string[];confidence:string;proposalId?:string;navigate?:string;entities?:{label:string;type:"vessel"|"crane"|"worker"|"berth";id:string}[]};
+export function answerPrompt(query:string,s:PortSnapshot):CopilotAnswer {
+  const q=query.trim().toLowerCase().replace(/[?!.]/g,"");
+  const prompt=PROMPTS.find(p=>p.toLowerCase().replace(/[?!.]/g,"")===q);
+  const b=s.berths.B2,c=s.cranes["QC-03"],og=s.vessels["V-OG"];
+  const base={confidence:"Deterministic · state grounded"};
+  switch(prompt) {
+    case PROMPTS[0]: return {...base,text:`Berth 2 is ${b.status}; ${b.occupantId?s.vessels[b.occupantId].name:"Kedah Pearl is scheduled"}. Crane 3 is ${c.status} at ${c.movesPerHour} moves/hour.`,evidence:[`B2 status: ${b.status}`,`QC-03 status: ${c.status}`,`Simulation clock: ${Math.floor(s.simSeconds)}s`],entities:[{label:"Berth 2",type:"berth",id:"B2"},{label:"Crane 3",type:"crane",id:"QC-03"}]};
+    case PROMPTS[1]: return {...base,text:`Berth 2 recovery is constrained by Crane 3's ${c.status} status and two prime movers still assigned to Yard C. Orient Gale's illustrative projected delay is ${og.delayMinutes} minutes.`,evidence:[`Crane 3: ${c.status}`,`PM-01: ${s.vehicles["PM-01"].assignment}; PM-02: ${s.vehicles["PM-02"].assignment}`,`Orient Gale: ${og.delayMinutes} min delay`],proposalId:s.proposals.find(p=>p.kind==="recover_delay"&&p.status==="pending")?.id,entities:[{label:"Orient Gale",type:"vessel",id:"V-OG"},{label:"Crane 3",type:"crane",id:"QC-03"}]};
+    case PROMPTS[2]: return {...base,text:`${og.name} has the largest projected delay at ${og.delayMinutes} simulated minutes.`,evidence:[`V-OG delayMinutes: ${og.delayMinutes}`,`Kedah Pearl: ${s.vessels["V-KP"].delayMinutes} min`],entities:[{label:"Orient Gale",type:"vessel",id:"V-OG"}]};
+    case PROMPTS[3]: {const breached=Object.values(s.workers).filter(w=>w.status==="breach");return {...base,text:breached.length?`${breached.length} fictional worker is in an active crane exclusion zone. Crane 3 is held.`:"No fictional worker is currently inside an active crane exclusion zone.",evidence:breached.map(w=>`${w.id} in ${w.zoneId}; role view shows zone only`),entities:breached.map(w=>({label:w.id,type:"worker" as const,id:w.id})),proposalId:s.proposals.find(p=>p.kind==="safe_lane"&&p.status==="pending")?.id};}
+    case PROMPTS[4]: return {...base,text:`The Safety portal has ${s.incidents.length} recorded simulated incident${s.incidents.length===1?"":"s"}. The last-shift filter is ready.`,evidence:s.incidents.map(i=>`${i.id}: ${i.title} · ${i.ruleTag}`),navigate:"/safety?filter=last-shift"};
+    case PROMPTS[5]: return {...base,text:`Reallocate PM-01 and PM-02 from Yard C to Berth 2, and use Crane 4 for available work. Human approval is required.`,evidence:[`Crane 3: ${c.status}`,`PM-01 and PM-02 assignments: ${s.vehicles["PM-01"].assignment}, ${s.vehicles["PM-02"].assignment}`],proposalId:s.proposals.find(p=>p.kind==="recover_delay"&&p.status==="pending")?.id};
+    case PROMPTS[6]: return {...base,text:`Preview only: a 20-minute later arrival would move Orient Gale's projected delay from ${og.delayMinutes} to ${og.delayMinutes+20} minutes if capacity stays the same. No berth assignment has changed.`,evidence:[`Current projected delay: ${og.delayMinutes} min`,`What-if arrival drift: +20 min`,`Preview: ${og.delayMinutes+20} min`],navigate:"/berths?preview=20"};
+    case PROMPTS[7]: return {...base,text:`This simulated shift has recorded ${s.moves.toLocaleString()} container moves, ${s.alerts.filter(a=>a.status!=="resolved").length} open alerts and ${s.proposals.filter(p=>p.status==="approved").length} human approvals.`,evidence:[`Moves counter: ${s.moves}`,`Audit events: ${s.events.length}`,`Scene: ${s.scene}`]};
+    case PROMPTS[8]: return {...base,text:`Crane 3's fictional certificate expires ${c.certificateExpiry}; it is valid for this 28 October 2026 simulation. Its operational hold remains active until separately cleared.`,evidence:[`QC-03 certificateExpiry: ${c.certificateExpiry}`,`QC-03 operational status: ${c.status}`],entities:[{label:"Crane 3",type:"crane",id:"QC-03"}]};
+    case PROMPTS[9]: return {...base,text:`Electric prime movers have used ${Math.round(s.energy.kwhToday).toLocaleString()} simulated kWh today and handled ${Math.round(s.energy.electricMoves/s.energy.totalMoves*100)}% of recorded moves.`,evidence:[`Electric moves: ${s.energy.electricMoves}`,`All moves: ${s.energy.totalMoves}`,`Charging bays used: ${s.energy.chargingBaysUsed}`],navigate:"/energy"};
+    case PROMPTS[10]: return {...base,text:"The Compliance portal can generate a local mock audit report for the current simulated state. It is not a legal compliance certificate.",evidence:[`Incidents: ${s.incidents.length}`,`Approvals: ${s.proposals.filter(p=>p.status==="approved").length}`],navigate:"/audit?prepare=1"};
+    case PROMPTS[11]: return {...base,text:"The Group view compares five illustrative MMC sea ports. PTP leads the simulated operational ranking; the figures on those tiles are clearly marked illustrative.",evidence:["Five named sea-port tiles","Historical TEU references are separated from simulated KPIs"],navigate:"/group"};
+    default: return {text:"I don't have that information in this simulation. Try one of the suggested questions.",evidence:[],confidence:"No matching simulation intent"};
+  }
+}

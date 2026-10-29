@@ -1,0 +1,3 @@
+import Link from "next/link";
+import { ThemeSwitch } from "@/components/theme/ThemeSwitch";
+export default function Login() { return <main className="auth-page"><div className="auth-theme-switch"><ThemeSwitch /></div><div className="auth-card"><div className="brand-mark">PC</div><p className="eyebrow">PORT COMMAND</p><h1>Sign in</h1><p>Production sign in requires the future Django identity service. The current build is a simulation.</p><label>Email<input type="email" disabled placeholder="name@organization.com" /></label><label>Password<input type="password" disabled placeholder="Future API mode" /></label><button disabled>Sign in unavailable</button><Link className="button primary" href="/control">Enter simulated control room</Link></div></main>; }
